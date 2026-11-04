@@ -27,6 +27,9 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - tests/ (including tests/test_paged_attention.py in Phase 7)
 - The build file for the C++ extension is decided in Phase 7.5; ask me before creating it.
 
+## Model
+- GGUF file: models/qwen2.5-0.5b-instruct-q4_k_m.gguf (Qwen2.5 0.5B Instruct, Q4_K_M; not in git)
+
 ## Commands
 - Install: pip install -r requirements.txt
 - Test: pytest -q
