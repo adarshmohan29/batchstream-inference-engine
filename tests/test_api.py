@@ -167,3 +167,28 @@ def test_client_disconnect_releases_sequence_and_full_budget():
 
     assert held < LARGE
     assert released
+
+
+def test_backend_error_sends_error_event_and_server_keeps_serving():
+    class FailsOnSecondStep(FakeBackend):
+        steps = 0
+
+        def step(self):
+            self.steps += 1
+            if self.steps == 2:
+                raise RuntimeError("decode failed")
+            return super().step()
+
+    backend = FailsOnSecondStep(tokens_per_sequence=2, step_seconds=0)
+
+    with running_server(make_scheduler(backend), backend) as port:
+        connection, response = post(port, "a", 2)
+        failed_events = read_events(response)
+        connection.close()
+        connection, response = post(port, "a", 2)
+        next_events = read_events(response)
+        connection.close()
+
+    assert "error" in json.loads(failed_events[-1])
+    assert "[DONE]" not in failed_events
+    assert next_events[-1] == "[DONE]"

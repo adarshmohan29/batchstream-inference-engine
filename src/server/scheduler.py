@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -6,6 +7,8 @@ from dataclasses import dataclass, field
 from server.backend.base import Backend, StepOutput
 from server.kv_budget import KVBudget
 from server.metrics import RequestMetrics
+
+logger = logging.getLogger(__name__)
 
 
 class RequestRejected(Exception):
@@ -29,6 +32,7 @@ class Request:
     stream: asyncio.Queue[int | None] = field(default_factory=asyncio.Queue)
     done: asyncio.Event = field(default_factory=asyncio.Event)
     cancelled: bool = False
+    failed: bool = False
 
     @property
     def kv_tokens(self) -> int:
@@ -94,7 +98,12 @@ class NaiveScheduler(_Scheduler):
         seq_id = await asyncio.to_thread(self._backend.start_sequence, request.prompt_tokens)
         finished = False
         while not finished and not request.cancelled:
-            outputs = await asyncio.to_thread(self._backend.step)
+            try:
+                outputs = await asyncio.to_thread(self._backend.step)
+            except RuntimeError:
+                logger.exception("backend step failed")
+                request.failed = True
+                break
             if seq_id in outputs:
                 finished = self._record_token(request, outputs[seq_id])
         self._finish(seq_id, request)
@@ -131,11 +140,22 @@ class BatchingScheduler(_Scheduler):
             self._active[seq_id] = request
 
     async def _step(self) -> None:
-        outputs = await asyncio.to_thread(self._backend.step)
+        try:
+            outputs = await asyncio.to_thread(self._backend.step)
+        except RuntimeError:
+            logger.exception("backend step failed")
+            self._fail_active()
+            return
         for seq_id, output in outputs.items():
             request = self._active[seq_id]
             if self._record_token(request, output):
                 self._complete(seq_id, request)
+
+    def _fail_active(self) -> None:
+        # One decode covers every active sequence, so none of them can be trusted to continue.
+        for seq_id, request in list(self._active.items()):
+            request.failed = True
+            self._complete(seq_id, request)
 
     def _complete(self, seq_id: int, request: Request) -> None:
         del self._active[seq_id]

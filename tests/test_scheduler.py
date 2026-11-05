@@ -385,3 +385,70 @@ def test_cancel_during_prefill_stops_naive_request():
         return request
 
     assert asyncio.run(run()).tokens == []
+
+
+class FailsOnceBackend(RecordingBackend):
+    def __init__(self, tokens_per_sequence, fail_on_step):
+        super().__init__(tokens_per_sequence)
+        self._steps = 0
+        self._fail_on_step = fail_on_step
+
+    def step(self):
+        self._steps += 1
+        if self._steps == self._fail_on_step:
+            raise RuntimeError("decode failed")
+        return super().step()
+
+
+def serve_until_done(scheduler, *specs):
+    async def run():
+        loop_task = asyncio.create_task(scheduler.run())
+        requests = [scheduler.submit(prompt, max_tokens) for prompt, max_tokens in specs]
+        await asyncio.wait_for(asyncio.gather(*(r.done.wait() for r in requests)), timeout=5)
+        assert not loop_task.done()
+        loop_task.cancel()
+        return requests
+
+    return asyncio.run(run())
+
+
+def test_backend_error_fails_active_requests_and_keeps_serving():
+    budget = KVBudget(100)
+    backend = FailsOnceBackend(tokens_per_sequence=3, fail_on_step=2)
+    scheduler = BatchingScheduler(backend, 2, budget, LARGE)
+
+    first, second, waiting = serve_until_done(scheduler, ([1], 3), ([2], 3), ([3], 3))
+
+    assert first.failed and second.failed
+    assert first.tokens == [1] and second.tokens == [2]
+    assert not waiting.failed and waiting.tokens == [3, 4, 5]
+    assert budget.available == 100
+    assert sorted(s for event, s in backend.events if event == "release") == [0, 1, 2]
+
+
+def test_backend_error_fails_only_the_current_naive_request():
+    backend = FailsOnceBackend(tokens_per_sequence=2, fail_on_step=2)
+
+    first, second = serve_until_done(naive_scheduler(backend), ([1], 2), ([2], 2))
+
+    assert first.failed and first.tokens == [1]
+    assert not second.failed and second.tokens == [2, 3]
+    assert backend.events == [("start", 0), ("release", 0), ("start", 1), ("release", 1)]
+
+
+@pytest.mark.parametrize("make", [naive_scheduler, lambda backend: batching_scheduler(backend, 2)])
+def test_failed_request_stream_ends_with_end_marker(make):
+    async def run():
+        scheduler = make(FailsOnceBackend(tokens_per_sequence=3, fail_on_step=1))
+        loop_task = asyncio.create_task(scheduler.run())
+        tokens = await collect_stream(scheduler.submit([1], 3))
+        loop_task.cancel()
+        return tokens
+
+    assert asyncio.run(run()) == []
+
+
+def test_successful_request_is_not_marked_failed():
+    [request] = serve(FakeBackend(tokens_per_sequence=1, step_seconds=0), ([1], 1))
+
+    assert request.failed is False

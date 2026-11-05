@@ -229,3 +229,19 @@ def test_batched_is_faster_under_concurrent_load():
         batched_seconds = time.monotonic() - start
 
     assert batched_seconds < naive_seconds
+
+
+def test_real_kv_overflow_fails_request_and_backend_keeps_working():
+    with open_backend(n_ctx=256, max_sequences=1, prefill_chunk=8) as backend:
+        tokens = backend.tokenize(PROMPTS[0])
+        scheduler = naive(backend)
+        expected = serve(scheduler, [(tokens, 6)])[0].tokens
+
+        oversized, following = serve(
+            batching(backend, max_concurrent=1),
+            [(backend.tokenize("word " * 400), 6), (tokens, 6)],
+        )
+
+    assert oversized.failed
+    assert not following.failed
+    assert following.tokens == expected

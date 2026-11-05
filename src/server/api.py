@@ -39,7 +39,10 @@ async def _events(backend: Backend, request: Request) -> AsyncIterator[str]:
         text = decoder.decode(backend.detokenize([token]))
         if text:
             yield f"data: {json.dumps({'text': text})}\n\n"
-    yield "data: [DONE]\n\n"
+    if request.failed:
+        yield f"data: {json.dumps({'error': 'backend failure'})}\n\n"
+    else:
+        yield "data: [DONE]\n\n"
 
 
 def create_app(scheduler, backend: Backend) -> FastAPI:
