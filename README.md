@@ -1,6 +1,6 @@
-# LLM inference server with continuous batching
+# BatchStream Inference Engine
 
-An inference server with its own scheduler, KV-cache memory manager, streaming API and benchmarks. It runs on two backends: llama.cpp, and a hand-written PyTorch model with a paged KV cache and a C++ paged-attention function.
+An inference engine with continuous batching and SSE streaming, with its own scheduler, KV-cache memory manager, streaming API and benchmarks. It runs on two backends: llama.cpp, and a hand-written PyTorch model with a paged KV cache and a C++ paged-attention function.
 
 **Main result:** on the same backend, model and workload, continuous batching beats serving one request at a time under load. Peak throughput is **2.55x** higher on llama.cpp and **1.56x** higher on the paged backend. At 4 req/s on llama.cpp, end-to-end p99 latency falls from 16.33 s to 2.17 s.
 
@@ -216,3 +216,7 @@ When requests arrive faster than the server can generate tokens, four things hap
 - Investigate and tune the paged backend's light-load latency.
 - Rerun the benchmarks on an idle machine.
 - Run llama.cpp on CPU for a closer backend comparison.
+
+## License
+
+The code is under the [MIT License](LICENSE). The model files aren't in this repo. `Qwen/Qwen2.5-0.5B-Instruct` is under Apache 2.0, separately.

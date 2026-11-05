@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## Project
-LLM inference server with continuous batching. I write the scheduler, the KV-cache memory manager, streaming API and benchmarks. Two backends: llama.cpp (baseline, Phases 0-6) and my own PyTorch model with a paged (block-based) KV cache and a C++ paged-attention function (Phase 7). Full roadmap: PLAN.md.
+BatchStream Inference Engine: LLM inference server with continuous batching. I write the scheduler, the KV-cache memory manager, streaming API and benchmarks. Two backends: llama.cpp (baseline, Phases 0-6) and my own PyTorch model with a paged (block-based) KV cache and a C++ paged-attention function (Phase 7). Full roadmap: PLAN.md.
 
 ## Stack
 - Python 3.11+, asyncio

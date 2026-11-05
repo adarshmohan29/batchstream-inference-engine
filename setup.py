@@ -2,7 +2,7 @@ from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CppExtension
 
 setup(
-    name="llm-inference-extensions",
+    name="batchstream-inference-engine",
     package_dir={"": "src"},
     ext_modules=[
         CppExtension(
