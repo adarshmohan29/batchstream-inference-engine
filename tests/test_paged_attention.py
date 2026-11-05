@@ -143,3 +143,128 @@ def test_release_returns_every_block():
     pool.release(cache)
 
     assert pool.free_blocks == 4
+
+
+# Measured on real runs: 774 of 7.7M attention values differ, by at most 0.0078, and those
+# differences reach the logits as at most 0.37 after 24 layers. Both limits sit just above that.
+CPP_TOLERANCE = 0.01
+CPP_MODEL_TOLERANCE = 0.5
+
+
+@pytest.fixture(scope="module")
+def cpp_attention():
+    from server.paged_attention_cpp import paged_attention as compiled
+
+    return compiled
+
+
+def bf16_attention_inputs(length, block_size=4, seed=0):
+    generator = torch.Generator().manual_seed(seed)
+    num_blocks = -(-length // block_size) + 3
+    table = torch.randperm(num_blocks, generator=generator)[: -(-length // block_size)].tolist()
+    shape = (2, num_blocks, block_size, 8)
+    keys = torch.full(shape, float("nan"), dtype=torch.bfloat16)
+    values = torch.full(shape, float("nan"), dtype=torch.bfloat16)
+    for position in range(length):
+        block, offset = table[position // block_size], position % block_size
+        keys[:, block, offset] = torch.randn(2, 8, generator=generator).to(torch.bfloat16)
+        values[:, block, offset] = torch.randn(2, 8, generator=generator).to(torch.bfloat16)
+    query = torch.randn(4, 8, generator=generator).to(torch.bfloat16)
+    return query, keys, values, table
+
+
+@pytest.mark.parametrize("length", [1, 3, 4, 5, 8, 9, 15, 16, 17, 100, 1000])
+def test_cpp_matches_python_on_scattered_blocks(cpp_attention, length):
+    query, keys, values, table = bf16_attention_inputs(length, seed=length)
+    scaling = 8**-0.5
+
+    expected = paged_attention(query, keys, values, table, length, 4, 2, scaling)
+    actual = cpp_attention(query, keys, values, table, length, 4, 2, scaling)
+
+    assert actual.dtype == torch.bfloat16
+    assert actual.shape == expected.shape
+    assert difference(actual, expected) <= CPP_TOLERANCE
+
+
+def test_cpp_accepts_a_non_contiguous_query(cpp_attention):
+    query, keys, values, table = bf16_attention_inputs(5)
+    strided = torch.zeros(4, 3, 8, dtype=torch.bfloat16)
+    strided[:, 1] = query
+
+    actual = cpp_attention(strided[:, 1], keys, values, table, 5, 4, 2, 0.5)
+
+    assert torch.equal(actual, cpp_attention(query, keys, values, table, 5, 4, 2, 0.5))
+
+
+def test_cpp_never_reads_past_length(cpp_attention):
+    query, keys, values, table = bf16_attention_inputs(5)
+
+    assert not cpp_attention(query, keys, values, table, 5, 4, 2, 0.5).isnan().any()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"length": 0},
+        {"length": -1},
+        {"length": 13},
+        {"table": []},
+        {"table": [999, 0]},
+        {"table": [-1, 0]},
+        {"block_size": 0},
+        {"block_size": 8},
+        {"groups": 0},
+        {"groups": 3},
+        {"query": torch.zeros(4, 7, dtype=torch.bfloat16)},
+        {"query": torch.zeros(4, 8, dtype=torch.float32)},
+        {"query": torch.zeros(8, dtype=torch.bfloat16)},
+        {"keys": torch.zeros(2, 3, 4, 8, dtype=torch.float32)},
+        {"keys": torch.zeros(3, 8, dtype=torch.bfloat16)},
+        {"values": torch.zeros(2, 2, 4, 8, dtype=torch.bfloat16)},
+    ],
+)
+def test_cpp_rejects_bad_input_with_an_error_not_a_crash(cpp_attention, change):
+    query, keys, values, table = bf16_attention_inputs(5)
+    arguments = dict(
+        query=query, keys=keys, values=values, table=table, length=5, block_size=4, groups=2
+    )
+    arguments.update(change)
+
+    with pytest.raises(RuntimeError):
+        cpp_attention(
+            arguments["query"], arguments["keys"], arguments["values"], arguments["table"],
+            arguments["length"], arguments["block_size"], arguments["groups"], 0.5,
+        )
+
+
+@needs_model
+@pytest.mark.parametrize("length", [1, 15, 16, 17, 33, 100])
+def test_cpp_model_logits_match_python_paged_attention(model, tokens, cpp_attention, length):
+    prompt, last = tokens[: length - 1], tokens[length - 1]
+    python_pool = PagedKVPool(model.config, 16, BLOCK_SIZE)
+    cpp_pool = PagedKVPool(model.config, 16, BLOCK_SIZE, attention=cpp_attention)
+    python_cache, cpp_cache = python_pool.new_cache(0), cpp_pool.new_cache(0)
+    if prompt:
+        model.forward(prompt, python_cache)
+        model.forward(prompt, cpp_cache)
+
+    actual = model.forward([last], cpp_cache)
+
+    assert difference(actual, model.forward([last], python_cache)) <= CPP_MODEL_TOLERANCE
+
+
+@needs_model
+def test_cpp_greedy_tokens_match_python(model, tokens, cpp_attention):
+    def generate(pool):
+        cache = pool.new_cache(0)
+        logits = model.forward(tokens[:20], cache)[-1]
+        generated = []
+        for _ in range(16):
+            generated.append(logits.float().argmax().item())
+            logits = model.forward([generated[-1]], cache)[-1]
+        return generated
+
+    python_tokens = generate(PagedKVPool(model.config, 16, BLOCK_SIZE))
+    cpp_tokens = generate(PagedKVPool(model.config, 16, BLOCK_SIZE, attention=cpp_attention))
+
+    assert cpp_tokens == python_tokens

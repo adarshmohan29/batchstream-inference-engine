@@ -7,7 +7,7 @@ import llama_cpp as lc
 
 from server.backend.base import Backend, StepOutput
 from server.backend.llamacpp import LlamaVocab
-from server.torch_model import PagedKVCache, PagedKVPool, TorchModel
+from server.torch_model import PagedKVCache, PagedKVPool, TorchModel, paged_attention
 
 
 @dataclass
@@ -20,10 +20,16 @@ class _Sequence:
 
 class PagedBackend(Backend):
     def __init__(
-        self, model_dir: Path, gguf_path: Path, num_blocks: int, block_size: int, prefill_chunk: int
+        self,
+        model_dir: Path,
+        gguf_path: Path,
+        num_blocks: int,
+        block_size: int,
+        prefill_chunk: int,
+        attention=paged_attention,
     ):
         self._model = TorchModel.load(model_dir)
-        self._pool = PagedKVPool(self._model.config, num_blocks, block_size)
+        self._pool = PagedKVPool(self._model.config, num_blocks, block_size, attention)
         self._num_blocks = num_blocks
         self._prefill_chunk = prefill_chunk
         # The GGUF holds the same vocabulary, so both backends tokenize identically.

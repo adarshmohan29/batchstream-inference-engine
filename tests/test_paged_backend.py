@@ -175,3 +175,21 @@ def test_running_out_of_blocks_fails_request_and_backend_recovers():
     assert oversized.failed
     assert not following.failed
     assert following.tokens == expected
+
+
+def test_scheduler_runs_end_to_end_with_cpp_attention():
+    from server.paged_attention_cpp import paged_attention as cpp_attention
+
+    with open_backend() as python_backend:
+        specs = specs_for(python_backend)
+        expected = serve(BatchingScheduler(python_backend, 3, KVBudget(LARGE), LARGE), specs)
+
+    backend = PagedBackend(MODEL_DIR, GGUF, 64, BLOCK_SIZE, 64, attention=cpp_attention)
+    try:
+        actual = serve(BatchingScheduler(backend, 3, KVBudget(LARGE), LARGE), specs)
+        assert backend.blocks_in_use == 0
+    finally:
+        backend.close()
+
+    assert all(not r.failed for r in actual)
+    assert [r.tokens for r in actual] == [r.tokens for r in expected]

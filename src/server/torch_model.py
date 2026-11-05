@@ -113,7 +113,10 @@ class ContiguousKVCache:
 
 
 class PagedKVPool:
-    def __init__(self, config: "ModelConfig", num_blocks: int, block_size: int):
+    def __init__(
+        self, config: "ModelConfig", num_blocks: int, block_size: int, attention=paged_attention
+    ):
+        self.attention = attention
         shape = (config.num_layers, config.num_kv_heads, num_blocks, block_size, config.head_dim)
         self.keys = torch.zeros(shape, dtype=torch.bfloat16)
         self.values = torch.zeros(shape, dtype=torch.bfloat16)
@@ -154,7 +157,7 @@ class PagedKVCache:
         table = pool.block_table(self.seq_id)
         length = self.length + queries.shape[1]
         if queries.shape[1] == 1:
-            output = paged_attention(
+            output = pool.attention(
                 queries[:, 0], pool.keys[layer], pool.values[layer], table, length,
                 pool.block_size, groups, scaling,
             )
