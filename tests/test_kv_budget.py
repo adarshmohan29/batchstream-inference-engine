@@ -1,4 +1,4 @@
-from server.kv_budget import KVBudget
+from server.kv_budget import BlockBudget, KVBudget
 
 
 def test_reservation_that_fits_reduces_available():
@@ -39,3 +39,34 @@ def test_fits_ever_compares_against_total_capacity():
 
     assert budget.fits_ever(100) is True
     assert budget.fits_ever(101) is False
+
+
+def test_block_budget_rounds_tokens_up_to_whole_blocks():
+    budget = BlockBudget(num_blocks=4, block_size=16)
+
+    assert budget.try_reserve(17) is True
+    assert budget.available == 2
+
+
+def test_block_budget_refuses_when_blocks_run_out():
+    budget = BlockBudget(num_blocks=2, block_size=16)
+    budget.try_reserve(16)
+
+    assert budget.try_reserve(17) is False
+    assert budget.available == 1
+
+
+def test_block_budget_release_returns_the_same_blocks():
+    budget = BlockBudget(num_blocks=4, block_size=16)
+    budget.try_reserve(17)
+
+    budget.release(17)
+
+    assert budget.available == 4
+
+
+def test_block_budget_fits_ever_counts_total_blocks():
+    budget = BlockBudget(num_blocks=2, block_size=16)
+
+    assert budget.fits_ever(32) is True
+    assert budget.fits_ever(33) is False

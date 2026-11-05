@@ -11,6 +11,29 @@ _MAX_PIECE_BYTES = 256
 lc.llama_backend_init()
 
 
+class LlamaVocab:
+    def __init__(self, vocab):
+        self._vocab = vocab
+
+    def tokenize(self, text: str) -> list[int]:
+        encoded = text.encode()
+        tokens = (lc.llama_token * (len(encoded) + 2))()
+        # parse_special is off so that user text cannot forge control tokens.
+        count = lc.llama_tokenize(self._vocab, encoded, len(encoded), tokens, len(tokens), True, False)
+        return list(tokens[:count])
+
+    def detokenize(self, tokens: list[int]) -> bytes:
+        return b"".join(self._piece(token) for token in tokens)
+
+    def is_end_of_generation(self, token: int) -> bool:
+        return lc.llama_vocab_is_eog(self._vocab, token)
+
+    def _piece(self, token: int) -> bytes:
+        buffer = ctypes.create_string_buffer(_MAX_PIECE_BYTES)
+        count = lc.llama_token_to_piece(self._vocab, token, buffer, _MAX_PIECE_BYTES, 0, False)
+        return buffer.raw[:count]
+
+
 @dataclass
 class _Sequence:
     pending: deque[int]
@@ -45,7 +68,7 @@ class LlamaCppBackend(Backend):
         # One shared pool, so KVBudget capacity maps directly to n_ctx instead of n_ctx per sequence.
         context_params.kv_unified = True
         self._context = lc.llama_init_from_model(self._model, context_params)
-        self._vocab = lc.llama_model_get_vocab(self._model)
+        self._vocab = LlamaVocab(lc.llama_model_get_vocab(self._model))
         self._memory = lc.llama_get_memory(self._context)
         self._batch = lc.llama_batch_init(n_batch, 0, 1)
         self._sampler = lc.llama_sampler_init_greedy()
@@ -54,14 +77,10 @@ class LlamaCppBackend(Backend):
         self._sequences: dict[int, _Sequence] = {}
 
     def tokenize(self, text: str) -> list[int]:
-        encoded = text.encode()
-        tokens = (lc.llama_token * (len(encoded) + 2))()
-        # parse_special is off so that user text cannot forge control tokens.
-        count = lc.llama_tokenize(self._vocab, encoded, len(encoded), tokens, len(tokens), True, False)
-        return list(tokens[:count])
+        return self._vocab.tokenize(text)
 
     def detokenize(self, tokens: list[int]) -> bytes:
-        return b"".join(self._piece(token) for token in tokens)
+        return self._vocab.detokenize(tokens)
 
     def start_sequence(self, prompt_tokens: list[int]) -> int:
         seq_id = self._free_ids.pop()
@@ -126,10 +145,5 @@ class LlamaCppBackend(Backend):
         token = lc.llama_sampler_sample(self._sampler, self._context, index)
         sequence = self._sequences[seq_id]
         sequence.next_token = token
-        sequence.finished = lc.llama_vocab_is_eog(self._vocab, token)
+        sequence.finished = self._vocab.is_end_of_generation(token)
         return StepOutput(token, sequence.finished)
-
-    def _piece(self, token: int) -> bytes:
-        buffer = ctypes.create_string_buffer(_MAX_PIECE_BYTES)
-        count = lc.llama_token_to_piece(self._vocab, token, buffer, _MAX_PIECE_BYTES, 0, False)
-        return buffer.raw[:count]

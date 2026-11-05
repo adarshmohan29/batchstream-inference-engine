@@ -58,7 +58,8 @@ def test_cache_appends_contiguously_per_layer():
 
     cache.append(0, first, first)
     cache.advance(1)
-    keys, values = cache.append(0, second, second * 3)
+    cache.append(0, second, second * 3)
+    keys, values = cache.read(0, 1)
 
     assert keys.shape == (2, 2, 4)
     assert torch.equal(keys[:, 0], first[:, 0])
@@ -70,7 +71,8 @@ def test_cache_layers_are_independent():
     cache = small_cache()
 
     cache.append(0, torch.ones(2, 1, 4), torch.ones(2, 1, 4))
-    keys, _ = cache.append(1, torch.zeros(2, 1, 4), torch.zeros(2, 1, 4))
+    cache.append(1, torch.zeros(2, 1, 4), torch.zeros(2, 1, 4))
+    keys, _ = cache.read(1, 1)
 
     assert torch.equal(keys, torch.zeros(2, 1, 4))
 
@@ -90,9 +92,9 @@ def test_cache_refuses_more_tokens_than_capacity():
     cache = small_cache(capacity=3)
     cache.advance(2)
 
-    cache.check_room(1)
+    cache.reserve(1)
     with pytest.raises(ValueError):
-        cache.check_room(2)
+        cache.reserve(2)
 
 
 @needs_model
