@@ -341,3 +341,47 @@ def test_cancelling_finished_request_does_not_release_twice():
 
     assert budget.available == 100
     assert backend.events == [("start", 0), ("release", 0), ("start", 1), ("release", 1)]
+
+
+class SlowPrefillBackend(FakeBackend):
+    """Emits nothing for a sequence during its first step, like chunked prefill."""
+
+    def __init__(self, tokens_per_sequence):
+        super().__init__(tokens_per_sequence, step_seconds=0)
+        self._prefilling = set()
+
+    def start_sequence(self, prompt_tokens):
+        seq_id = super().start_sequence(prompt_tokens)
+        self._prefilling.add(seq_id)
+        return seq_id
+
+    def step(self):
+        if self._prefilling:
+            self._prefilling.clear()
+            return {}
+        return super().step()
+
+
+@pytest.mark.parametrize("make", [naive_scheduler, lambda backend: batching_scheduler(backend, 2)])
+def test_step_without_a_token_for_a_sequence_is_tolerated(make):
+    [request] = run_requests(make(SlowPrefillBackend(tokens_per_sequence=2)), ([1], 5))
+
+    assert request.tokens == [1, 2]
+
+
+def test_cancel_during_prefill_stops_naive_request():
+    class NeverEmits(FakeBackend):
+        def step(self):
+            return {}
+
+    async def run():
+        scheduler = naive_scheduler(NeverEmits(tokens_per_sequence=1, step_seconds=0.001))
+        loop_task = asyncio.create_task(scheduler.run())
+        request = scheduler.submit([1], 5)
+        await asyncio.sleep(0.01)
+        scheduler.cancel(request)
+        await asyncio.wait_for(request.done.wait(), timeout=5)
+        loop_task.cancel()
+        return request
+
+    assert asyncio.run(run()).tokens == []

@@ -33,7 +33,7 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 ## Commands
 - Install: pip install -r requirements.txt
 - Test: pytest -q
-- Run server: uvicorn server.api:app --app-dir src
+- Run server: uvicorn server.api:build_app --factory --app-dir src
 (Update this section as commands are actually created. Never invent commands.)
 
 ## Rules for code (important)

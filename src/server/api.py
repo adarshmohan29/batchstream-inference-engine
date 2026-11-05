@@ -3,13 +3,14 @@ import codecs
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from server.backend.base import Backend
-from server.backend.fake import FakeBackend
+from server.backend.llamacpp import LlamaCppBackend
 from server.kv_budget import KVBudget
 from server.scheduler import BatchingScheduler, QueueFull, Request, RequestTooLarge
 
@@ -61,7 +62,14 @@ def create_app(scheduler, backend: Backend) -> FastAPI:
         return _CancelOnExitResponse(_events(backend, request), lambda: scheduler.cancel(request))
 
     return app
+_MODEL_PATH = Path(__file__).parents[2] / "models" / "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+_N_CTX = 4096
+_MAX_CONCURRENT = 8
+_PREFILL_CHUNK = 64
+_MAX_QUEUE = 32
 
 
-_backend = FakeBackend(tokens_per_sequence=20, step_seconds=0.05)
-app = create_app(BatchingScheduler(_backend, 4, KVBudget(4096), 32), _backend)
+def build_app() -> FastAPI:
+    backend = LlamaCppBackend(str(_MODEL_PATH), _N_CTX, _MAX_CONCURRENT, _PREFILL_CHUNK)
+    budget = KVBudget(_N_CTX)
+    return create_app(BatchingScheduler(backend, _MAX_CONCURRENT, budget, _MAX_QUEUE), backend)

@@ -52,7 +52,11 @@ Done when: manual curl streams tokens; a disconnect test confirms budget is rele
 - Implement llamacpp.py against the pinned llama-cpp-python version. Verify every API call against installed source/help before using it.
 - Batch multiple sequences in one decode call using separate sequence IDs.
 - First check: output of a single request matches the naive path with greedy sampling.
-Done when: same prompts produce identical greedy output in naive and batched modes, and batched mode is faster under concurrent load.
+- Long prompts are prefilled in chunks inside step(), mixed with other sequences' generation, so they do not stall active streams.
+Done when:
+  - with n_ubatch=1, batched greedy output is identical to one-at-a-time output (proves the sequence logic), including mid-flight joins and sequence ID reuse;
+  - in normal mode, the rate of matching output is measured and reported, because llama.cpp computes multi-token batches slightly differently, which can flip near-tied tokens;
+  - batched mode is faster under concurrent load.
 
 ## Phase 7: Own backend with paged KV cache and C++ paged attention
 Do these sub-phases in order. Stop after each one. Ask me before changing the Backend interface.

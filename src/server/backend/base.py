@@ -23,7 +23,7 @@ class Backend(ABC):
 
     @abstractmethod
     def step(self) -> dict[int, StepOutput]:
-        """Generate one token for each unfinished sequence, keyed by sequence id."""
+        """Generate one token per unfinished sequence; sequences still in prefill may be absent."""
 
     @abstractmethod
     def release_sequence(self, seq_id: int) -> None:

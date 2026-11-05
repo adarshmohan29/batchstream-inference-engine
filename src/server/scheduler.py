@@ -94,8 +94,9 @@ class NaiveScheduler(_Scheduler):
         seq_id = await asyncio.to_thread(self._backend.start_sequence, request.prompt_tokens)
         finished = False
         while not finished and not request.cancelled:
-            output = (await asyncio.to_thread(self._backend.step))[seq_id]
-            finished = self._record_token(request, output)
+            outputs = await asyncio.to_thread(self._backend.step)
+            if seq_id in outputs:
+                finished = self._record_token(request, outputs[seq_id])
         self._finish(seq_id, request)
 
 
