@@ -28,6 +28,7 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - bench/loadgen.py, bench/report.py
 - bench/phase7.py               Phase 7.6 memory and Python vs C++ measurements
 - results/phase7/               Phase 7.6 output files
+- results/phase8/               Phase 8 raw CSVs, summaries, plots and environment
 - tests/ (including tests/test_paged_attention.py in Phase 7)
 
 ## Model
@@ -43,6 +44,8 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - Test: pytest -q
 - Run server: uvicorn server.api:build_app --factory --app-dir src
 - Phase 7.6 measurements: PYTHONPATH=src python bench/phase7.py
+- Phase 8 benchmark: PYTHONPATH=src python bench/loadgen.py
+- Phase 8 report: python bench/report.py
 (Update this section as commands are actually created. Never invent commands.)
 
 ## Rules for code (important)

@@ -1,0 +1,7 @@
+repeat,backend,swap_used_at_start_mb
+0,llama.cpp,6621.62
+0,paged,6764.31
+1,paged,6753.94
+1,llama.cpp,7718.12
+2,llama.cpp,6594.38
+2,paged,6540.19
