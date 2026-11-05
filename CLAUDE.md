@@ -26,6 +26,8 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - csrc/paged_attention.cpp      C++ paged attention, decode, CPU (Phase 7.5)
 - setup.py                      builds the C++ extension into src/server/ (Phase 7.5)
 - bench/loadgen.py, bench/report.py
+- bench/phase7.py               Phase 7.6 memory and Python vs C++ measurements
+- results/phase7/               Phase 7.6 output files
 - tests/ (including tests/test_paged_attention.py in Phase 7)
 
 ## Model
@@ -40,6 +42,7 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - Build C++ extension (rerun after changing csrc/): python setup.py build_ext --inplace
 - Test: pytest -q
 - Run server: uvicorn server.api:build_app --factory --app-dir src
+- Phase 7.6 measurements: PYTHONPATH=src python bench/phase7.py
 (Update this section as commands are actually created. Never invent commands.)
 
 ## Rules for code (important)

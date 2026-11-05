@@ -1,0 +1,2 @@
+paged_peak_bytes,full_context_peak_bytes,worst_case_reserved_peak_bytes,paged_mean_bytes,full_context_mean_bytes,peak_saving_vs_full_context_percent,peak_saving_vs_worst_case_reserved_percent,requests,requested_tokens
+3538944,201326592,4128768,1848115.2000000002,169240166.39999998,98.2421875,14.28571428571429,8,426

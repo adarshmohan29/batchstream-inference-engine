@@ -1,0 +1,20 @@
+{
+  "machine": "arm64",
+  "cpu": "Apple M1",
+  "memory_bytes": 8589934592,
+  "macos": "27.0",
+  "python": "3.11.5",
+  "torch": "2.15.0",
+  "llama_cpp_python": "0.3.36",
+  "torch_threads": 4,
+  "model": "models/qwen2.5-0.5b-instruct",
+  "model_sha256": "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe",
+  "dtype": "bfloat16, CPU",
+  "seed": 0,
+  "block_size": 16,
+  "num_blocks": 256,
+  "max_concurrent": 4,
+  "full_context_tokens": 4096,
+  "swap_before": "total = 8192.00M  used = 7366.62M  free = 825.38M  (encrypted)",
+  "swap_after": "total = 8192.00M  used = 7287.56M  free = 904.44M  (encrypted)"
+}
