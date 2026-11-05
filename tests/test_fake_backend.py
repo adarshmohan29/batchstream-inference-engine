@@ -91,3 +91,18 @@ def test_step_sleeps_once_regardless_of_sequence_count(monkeypatch):
     backend.step()
 
     assert sleeps == [0.25]
+
+
+def test_tokenize_is_deterministic_and_nonempty():
+    backend = make_backend()
+
+    assert backend.tokenize("ab") == backend.tokenize("ab")
+    assert backend.tokenize("ab") != backend.tokenize("ba")
+    assert backend.tokenize("ab")
+
+
+def test_detokenize_returns_bytes_for_each_token():
+    backend = make_backend()
+
+    assert backend.detokenize([1]) != backend.detokenize([2])
+    assert isinstance(backend.detokenize([1]), bytes)

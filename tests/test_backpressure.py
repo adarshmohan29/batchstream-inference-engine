@@ -4,7 +4,13 @@ import pytest
 from test_scheduler import RecordingBackend, run_requests
 
 from server.kv_budget import KVBudget
-from server.scheduler import BatchingScheduler, NaiveScheduler, RequestRejected
+from server.scheduler import (
+    BatchingScheduler,
+    NaiveScheduler,
+    QueueFull,
+    RequestRejected,
+    RequestTooLarge,
+)
 
 LARGE = 1_000_000
 
@@ -135,3 +141,14 @@ def test_admitted_request_frees_its_queue_slot():
         return second
 
     assert asyncio.run(run()).tokens == [2]
+
+
+def test_rejection_types_distinguish_too_large_from_queue_full():
+    scheduler = batching(RecordingBackend(tokens_per_sequence=1), capacity=10, max_queue=1)
+
+    with pytest.raises(RequestTooLarge):
+        scheduler.submit([1], 10)
+
+    scheduler.submit([1], 1)
+    with pytest.raises(QueueFull):
+        scheduler.submit([2], 1)

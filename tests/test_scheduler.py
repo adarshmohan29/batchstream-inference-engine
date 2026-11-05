@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from server.backend.fake import FakeBackend
 from server.kv_budget import KVBudget
 from server.scheduler import BatchingScheduler, NaiveScheduler
@@ -212,3 +214,130 @@ def test_batched_request_submitted_after_idle_is_served():
         return second
 
     assert asyncio.run(run()).tokens == [2]
+
+
+def batching_with_budget(backend, budget, max_queue=LARGE):
+    return BatchingScheduler(backend, 4, budget, max_queue)
+
+
+async def collect_stream(request):
+    tokens = []
+    while (token := await asyncio.wait_for(request.stream.get(), timeout=5)) is not None:
+        tokens.append(token)
+    return tokens
+
+
+@pytest.mark.parametrize("make", [naive_scheduler, lambda backend: batching_scheduler(backend, 2)])
+def test_stream_yields_tokens_then_end_marker(make):
+    async def run():
+        scheduler = make(FakeBackend(tokens_per_sequence=3, step_seconds=0))
+        loop_task = asyncio.create_task(scheduler.run())
+        tokens = await collect_stream(scheduler.submit([1], 10))
+        loop_task.cancel()
+        return tokens
+
+    assert asyncio.run(run()) == [1, 2, 3]
+
+
+@pytest.mark.parametrize("make", [naive_scheduler, lambda backend: batching_scheduler(backend, 1)])
+def test_cancelled_waiting_request_never_reaches_backend(make):
+    async def run():
+        backend = RecordingBackend(tokens_per_sequence=1)
+        scheduler = make(backend)
+        cancelled = scheduler.submit([1], 1)
+        kept = scheduler.submit([2], 1)
+        scheduler.cancel(cancelled)
+        loop_task = asyncio.create_task(scheduler.run())
+        await asyncio.wait_for(kept.done.wait(), timeout=5)
+        loop_task.cancel()
+        return backend, cancelled
+
+    backend, cancelled = asyncio.run(run())
+
+    assert backend.events == [("start", 0), ("release", 0)]
+    assert cancelled.tokens == []
+    assert cancelled.done.is_set()
+    assert cancelled.stream.get_nowait() is None
+
+
+def test_cancelled_waiting_request_frees_its_queue_slot():
+    scheduler = BatchingScheduler(RecordingBackend(1), 1, KVBudget(LARGE), 1)
+    scheduler.cancel(scheduler.submit([1], 1))
+
+    assert scheduler.submit([2], 1).prompt_tokens == [2]
+
+
+def test_cancelled_running_request_releases_sequence_and_full_budget():
+    async def run():
+        budget = KVBudget(100)
+        backend = RecordingBackend(tokens_per_sequence=1000, step_seconds=0.001)
+        scheduler = batching_with_budget(backend, budget)
+        loop_task = asyncio.create_task(scheduler.run())
+        request = scheduler.submit([1], 50)
+        await asyncio.wait_for(request.stream.get(), timeout=5)
+        held = budget.available
+        scheduler.cancel(request)
+        await asyncio.wait_for(request.done.wait(), timeout=5)
+        loop_task.cancel()
+        return budget, backend, request, held
+
+    budget, backend, request, held = asyncio.run(run())
+
+    assert held == 49
+    assert budget.available == 100
+    assert backend.events == [("start", 0), ("release", 0)]
+    assert len(request.tokens) < 50
+
+
+def test_cancelled_running_request_stops_under_naive():
+    async def run():
+        backend = RecordingBackend(tokens_per_sequence=1000, step_seconds=0.001)
+        scheduler = naive_scheduler(backend)
+        loop_task = asyncio.create_task(scheduler.run())
+        request = scheduler.submit([1], 500)
+        await asyncio.wait_for(request.stream.get(), timeout=5)
+        scheduler.cancel(request)
+        await asyncio.wait_for(request.done.wait(), timeout=5)
+        loop_task.cancel()
+        return backend, request
+
+    backend, request = asyncio.run(run())
+
+    assert backend.events == [("start", 0), ("release", 0)]
+    assert len(request.tokens) < 500
+
+
+def test_cancel_does_not_affect_other_active_requests():
+    async def run():
+        backend = FakeBackend(tokens_per_sequence=20, step_seconds=0.001)
+        scheduler = batching_scheduler(backend, 2)
+        loop_task = asyncio.create_task(scheduler.run())
+        cancelled = scheduler.submit([1], 20)
+        other = scheduler.submit([100], 20)
+        await asyncio.wait_for(cancelled.stream.get(), timeout=5)
+        scheduler.cancel(cancelled)
+        await asyncio.wait_for(other.done.wait(), timeout=5)
+        loop_task.cancel()
+        return other
+
+    assert asyncio.run(run()).tokens == list(range(100, 120))
+
+
+def test_cancelling_finished_request_does_not_release_twice():
+    async def run():
+        budget = KVBudget(100)
+        backend = RecordingBackend(tokens_per_sequence=1)
+        scheduler = batching_with_budget(backend, budget)
+        loop_task = asyncio.create_task(scheduler.run())
+        request = scheduler.submit([1], 5)
+        await asyncio.wait_for(request.done.wait(), timeout=5)
+        scheduler.cancel(request)
+        follow_up = scheduler.submit([2], 5)
+        await asyncio.wait_for(follow_up.done.wait(), timeout=5)
+        loop_task.cancel()
+        return budget, backend
+
+    budget, backend = asyncio.run(run())
+
+    assert budget.available == 100
+    assert backend.events == [("start", 0), ("release", 0), ("start", 1), ("release", 1)]

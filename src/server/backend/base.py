@@ -10,6 +10,14 @@ class StepOutput:
 
 class Backend(ABC):
     @abstractmethod
+    def tokenize(self, text: str) -> list[int]:
+        """Convert text to prompt tokens."""
+
+    @abstractmethod
+    def detokenize(self, tokens: list[int]) -> bytes:
+        """Return raw bytes, because one character can span several tokens."""
+
+    @abstractmethod
     def start_sequence(self, prompt_tokens: list[int]) -> int:
         """Start a sequence from prompt tokens and return its id."""
 

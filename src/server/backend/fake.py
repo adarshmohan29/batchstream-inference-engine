@@ -18,6 +18,12 @@ class FakeBackend(Backend):
         self._sequences: dict[int, _Sequence] = {}
         self._ids = count()
 
+    def tokenize(self, text: str) -> list[int]:
+        return list(text.encode())
+
+    def detokenize(self, tokens: list[int]) -> bytes:
+        return "".join(f"<{token}>" for token in tokens).encode()
+
     def start_sequence(self, prompt_tokens: list[int]) -> int:
         seq_id = next(self._ids)
         self._sequences[seq_id] = _Sequence(sum(prompt_tokens), self._tokens_per_sequence)

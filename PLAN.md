@@ -44,7 +44,7 @@ Done when, with fake backend:
 Done when: tests cover admit, queue-when-full, reject-when-queue-full, reject-too-large, and release after finish.
 
 ## Phase 5: HTTP API + streaming
-- Endpoint to submit a prompt with max_tokens; stream tokens via SSE; 429 on rejection.
+- Endpoint to submit a prompt with max_tokens; stream tokens via SSE; 429 when the queue is full; 413 when a request can never fit.
 - Handle client disconnect by cancelling the request and releasing its KV budget.
 Done when: manual curl streams tokens; a disconnect test confirms budget is released.
 
