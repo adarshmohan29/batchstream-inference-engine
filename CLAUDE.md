@@ -9,6 +9,7 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 - llama-cpp-python for the baseline backend (pin the exact version in requirements.txt)
 - pytest for tests
 - Phase 7 only: PyTorch for my own model forward pass; a C++ extension for paged attention. The binding/build tool is chosen in Phase 7.5 after reading the installed PyTorch version's documentation.
+- transformers: tests only, as the reference implementation for Phase 7.1. Never used in the server path.
 - No other dependencies without asking me first.
 
 ## Layout
@@ -29,6 +30,10 @@ LLM inference server with continuous batching. I write the scheduler, the KV-cac
 
 ## Model
 - GGUF file: models/qwen2.5-0.5b-instruct-q4_k_m.gguf (Qwen2.5 0.5B Instruct, Q4_K_M; not in git)
+- PyTorch model (Phase 7): models/qwen2.5-0.5b-instruct/model.safetensors, downloaded from Qwen/Qwen2.5-0.5B-Instruct on Hugging Face (not in git)
+  - sha256: fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe
+  - Architecture: Qwen2ForCausalLM, 24 layers, hidden size 896, 14 attention heads, 2 KV heads, tied embeddings, bfloat16
+  - Versions: torch 2.15.0, transformers 5.22.1, safetensors 0.8.0, tokenizers 0.23.3
 
 ## Commands
 - Install: pip install -r requirements.txt
